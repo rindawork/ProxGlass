@@ -1,0 +1,14 @@
+services:
+  proxglass:
+    build: .
+    ports:
+      - "${PROXGLASS_PORT:-9000}:9000"
+    environment:
+      - PROXGLASS_SECRET_KEY=${PROXGLASS_SECRET_KEY}
+      - PROXGLASS_DEBUG=${PROXGLASS_DEBUG:-0}
+    volumes:
+      - proxglass_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  proxglass_data:
