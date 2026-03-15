@@ -1,4 +1,4 @@
-# Glassware Proxmox Console
+# ProxGlass
 
 A beautiful, modern, "glassware-style" web console for Proxmox Virtual Environment (PVE). This application replaces the default, utilitarian Proxmox interface with a stunning, responsive dashboard that gives you stats and information about your nodes and virtual machines at a glance.
 
