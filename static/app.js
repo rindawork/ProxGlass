@@ -2,158 +2,332 @@
 const API_BASE = '/api';
 
 // State
-let sessionToken = localStorage.getItem('pve_token') || null;
+let sessionToken = localStorage.getItem('app_token') || null;
 let currentVMsFetchRef = null;
+let isRegisterMode = false;
 
 // UI Elements
-const themeToggleBtn = document.getElementById('theme-toggle');
-const loginBtn = document.getElementById('login-submit');
-const logoutBtn = document.getElementById('logout-btn');
-const loginView = document.getElementById('login-view');
+const authView = document.getElementById('auth-view');
+const authForm = document.getElementById('auth-form');
+const authSubmitBtn = document.getElementById('auth-submit');
+const authToggleBtn = document.getElementById('auth-toggle-btn');
+const authTitle = document.getElementById('auth-title');
+const authSubtitle = document.getElementById('auth-subtitle');
+const authError = document.getElementById('auth-error');
+
 const dashboardView = document.getElementById('dashboard-view');
-const loginForm = document.getElementById('login-form');
-const nodesContainer = document.getElementById('nodes-container');
-const vmsContainer = document.getElementById('vms-container');
-const vmsHeader = document.getElementById('vms-header');
-const activeNodeName = document.getElementById('active-node-name');
-const vmCount = document.getElementById('vm-count');
+const serversView = document.getElementById('servers-view');
+const nodeDetailsView = document.getElementById('node-details-view');
+
+const navBtnDashboard = document.getElementById('nav-btn-dashboard');
+const navBtnServers = document.getElementById('nav-btn-servers');
+const logoutBtn = document.getElementById('logout-btn');
+
 const loadingOverlay = document.getElementById('loading-overlay');
-const loginError = document.getElementById('login-error');
+const dashboardGrid = document.getElementById('dashboard-grid');
+const addServerBtn = document.getElementById('add-server-btn');
+const addServerFormContainer = document.getElementById('add-server-form-container');
+const addServerForm = document.getElementById('add-server-form');
+const cancelSrvBtn = document.getElementById('cancel-srv-btn');
 
-// Theme Management
-function initTheme() {
-    if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.classList.add('dark');
-    } else {
-        document.documentElement.classList.remove('dark');
-    }
-}
-
-themeToggleBtn.addEventListener('click', () => {
-    document.documentElement.classList.toggle('dark');
-    localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-});
-
-initTheme();
+const vmsContainer = document.getElementById('vms-container');
+const detailServerName = document.getElementById('detail-server-name');
+const detailNodeName = document.getElementById('detail-node-name');
+const detailVmCount = document.getElementById('detail-vm-count');
+const backToDashboardBtn = document.getElementById('back-to-dashboard');
 
 // Helpers
-function escapeHTML(str) {
-    if (!str) return '';
-    return str.toString()
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
-
 function showLoading(show) {
-    if (show) {
-        loadingOverlay.classList.remove('hidden');
-    } else {
-        setTimeout(() => loadingOverlay.classList.add('hidden'), 200); // slight delay for smooth transition
-    }
+    if (show) loadingOverlay.classList.remove('hidden');
+    else setTimeout(() => loadingOverlay.classList.add('hidden'), 200);
 }
 
-function updateView() {
+function switchView(viewId) {
+    authView.classList.add('hidden');
+    dashboardView.classList.add('hidden');
+    serversView.classList.add('hidden');
+    nodeDetailsView.classList.add('hidden');
+    document.getElementById(viewId).classList.remove('hidden');
+}
+
+function updateNav() {
     if (sessionToken) {
-        loginView.classList.add('hidden');
-        dashboardView.classList.remove('hidden');
+        navBtnDashboard.classList.remove('hidden');
+        navBtnServers.classList.remove('hidden');
         logoutBtn.classList.remove('hidden');
-        loadNodes();
+        switchView('dashboard-view');
+        loadDashboard();
     } else {
-        loginView.classList.remove('hidden');
-        dashboardView.classList.add('hidden');
+        navBtnDashboard.classList.add('hidden');
+        navBtnServers.classList.add('hidden');
         logoutBtn.classList.add('hidden');
+        switchView('auth-view');
     }
 }
 
 async function fetchWithAuth(url, options = {}) {
-    if (!sessionToken) throw new Error("Not logged in");
-    
+    if (!sessionToken) throw new Error("AUTH_ERR // NO_TOKEN");
     const headers = {
         'Authorization': `Bearer ${sessionToken}`,
         ...options.headers
     };
-    
     const response = await fetch(`${API_BASE}${url}`, { ...options, headers });
-    
     if (response.status === 401) {
         sessionToken = null;
-        localStorage.removeItem('pve_token');
-        updateView();
-        throw new Error("Session expired. Please log in again.");
+        localStorage.removeItem('app_token');
+        updateNav();
+        throw new Error("AUTH_ERR // TOKEN_EXPIRED");
     }
-    
     if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || "API Request Failed");
+        throw new Error(error.detail || "SYS_ERR // UNKNOWN");
     }
-    
     return response.json();
 }
 
+// Navigation Listeners
+navBtnDashboard.addEventListener('click', () => { switchView('dashboard-view'); loadDashboard(); });
+navBtnServers.addEventListener('click', () => { switchView('servers-view'); loadServers(); });
+backToDashboardBtn.addEventListener('click', () => { switchView('dashboard-view'); loadDashboard(); });
+
 // Authentication
-loginForm.addEventListener('submit', async (e) => {
+authToggleBtn.addEventListener('click', () => {
+    isRegisterMode = !isRegisterMode;
+    if (isRegisterMode) {
+        authTitle.textContent = "REG_REQ";
+        authSubtitle.textContent = "Establish new local operator profile";
+        authSubmitBtn.textContent = "REGISTER";
+        authToggleBtn.textContent = "<< Return to local auth";
+    } else {
+        authTitle.textContent = "AUTH_REQ";
+        authSubtitle.textContent = "Establish secure local terminal session";
+        authSubmitBtn.textContent = "INITIALIZE";
+        authToggleBtn.textContent = ">> Switch to Network Registration";
+    }
+});
+
+authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    loginError.classList.add('hidden');
+    authError.classList.add('hidden');
+    const username = document.getElementById('auth-username').value;
+    const password = document.getElementById('auth-password').value;
     
-    const host = document.getElementById('host').value;
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-    const verify_ssl = document.getElementById('verify-ssl').checked;
-    
-    // UI state
-    const originalText = loginBtn.innerHTML;
-    loginBtn.innerHTML = '<i class="ph ph-circle-notch animate-spin text-xl"></i><span>Connecting...</span>';
-    loginBtn.disabled = true;
+    authSubmitBtn.innerHTML = '<i class="ph ph-circle-notch animate-spin"></i> SYNCING...';
+    authSubmitBtn.disabled = true;
     
     try {
-        const response = await fetch(`${API_BASE}/login`, {
+        const endpoint = isRegisterMode ? '/app/register' : '/app/login';
+        const response = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ host, username, password, verify_ssl })
+            body: JSON.stringify({ username, password })
         });
         
         const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Auth failed');
         
-        if (!response.ok) {
-            throw new Error(data.detail || 'Login failed');
+        if (isRegisterMode) {
+            // Auto login after register
+            const loginResp = await fetch(`${API_BASE}/app/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const loginData = await loginResp.json();
+            if (!loginResp.ok) throw new Error(loginData.detail);
+            sessionToken = loginData.token;
+        } else {
+            sessionToken = data.token;
         }
         
-        sessionToken = data.session_id;
-        localStorage.setItem('pve_token', sessionToken);
-        updateView();
+        localStorage.setItem('app_token', sessionToken);
+        updateNav();
+    } catch (err) {
+        authError.textContent = err.message;
+        authError.classList.remove('hidden');
+        authForm.classList.add('animate-pulse');
+        setTimeout(() => authForm.classList.remove('animate-pulse'), 500);
+    } finally {
+        authSubmitBtn.textContent = isRegisterMode ? "REGISTER" : "INITIALIZE";
+        authSubmitBtn.disabled = false;
+    }
+});
+
+logoutBtn.addEventListener('click', () => {
+    if(sessionToken) fetch(`${API_BASE}/app/logout`, { headers: {'Authorization': `Bearer ${sessionToken}`} }).catch(()=>{});
+    sessionToken = null;
+    localStorage.removeItem('app_token');
+    updateNav();
+});
+
+// Add Server
+addServerBtn.addEventListener('click', () => {
+    addServerFormContainer.classList.remove('hidden');
+});
+cancelSrvBtn.addEventListener('click', () => {
+    addServerFormContainer.classList.add('hidden');
+    document.getElementById('srv-error').classList.add('hidden');
+});
+
+addServerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('save-srv-btn');
+    const errBox = document.getElementById('srv-error');
+    errBox.classList.add('hidden');
+    
+    const payload = {
+        name: document.getElementById('srv-name').value,
+        host: document.getElementById('srv-host').value,
+        pve_username: document.getElementById('srv-username').value,
+        pve_password: document.getElementById('srv-password').value,
+        verify_ssl: document.getElementById('srv-verify-ssl').checked
+    };
+    
+    btn.innerHTML = '<i class="ph ph-circle-notch animate-spin"></i> PROBING...';
+    btn.disabled = true;
+    
+    try {
+        await fetchWithAuth('/servers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        addServerForm.reset();
+        addServerFormContainer.classList.add('hidden');
+        loadServers(); // Reload list
+    } catch (err) {
+        errBox.textContent = err.message;
+        errBox.classList.remove('hidden');
+    } finally {
+        btn.textContent = "ESTABLISH LINK";
+        btn.disabled = false;
+    }
+});
+
+async function deleteServer(id) {
+    if(!confirm('TERMINATE THIS LINK?')) return;
+    try {
+        await fetchWithAuth(`/servers/${id}`, { method: 'DELETE' });
+        loadServers();
+    } catch (err) {
+        alert("FAIL // " + err.message);
+    }
+}
+
+// Data Loaders
+async function loadServers() {
+    const list = document.getElementById('server-list');
+    list.innerHTML = '<div class="text-cyan font-mono animate-pulse">FETCHING_LINKS...</div>';
+    try {
+        const servers = await fetchWithAuth('/servers');
+        if (servers.length === 0) {
+            list.innerHTML = '<div class="cyber-card text-center text-cyan-dim font-mono py-8">NO UPLINKS ESTABLISHED.</div>';
+            return;
+        }
+        list.innerHTML = '';
+        servers.forEach(s => {
+            const el = document.createElement('div');
+            el.className = "cyber-card flex justify-between items-center";
+            el.innerHTML = `
+                <div>
+                    <div class="font-bold text-lg text-cyan font-mono">${s.name}</div>
+                    <div class="text-xs text-cyan-dim font-mono">${s.host} // ${s.pve_username}</div>
+                </div>
+                <button onclick="deleteServer(${s.id})" class="cyber-btn danger text-xs py-1 px-3">TERMINATE</button>
+            `;
+            list.appendChild(el);
+        });
+    } catch (err) {
+        list.innerHTML = `<div class="text-magenta font-mono">${err.message}</div>`;
+    }
+}
+
+async function loadDashboard() {
+    dashboardGrid.innerHTML = '<div class="col-span-full text-center py-10"><i class="ph ph-circle-notch animate-spin text-3xl text-cyan mb-2"></i><br><span class="text-cyan font-mono animate-pulse">GATHERING_FLEET_TELEMETRY...</span></div>';
+    
+    try {
+        const dashData = await fetchWithAuth('/dashboard');
+        dashboardGrid.innerHTML = '';
+        
+        if (dashData.length === 0) {
+            dashboardGrid.innerHTML = '<div class="cyber-card col-span-full text-center py-12"><div class="text-xl text-cyan-dim font-mono mb-4">NO ACTIVE UPLINKS</div><button onclick="switchView(\\'servers-view\\'); loadServers(); addServerFormContainer.classList.remove(\\'hidden\\')" class="cyber-btn py-2 px-6">CONFIGURE NEW UPLINK</button></div>';
+            return;
+        }
+        
+        dashData.forEach(srv => {
+            const card = document.createElement('div');
+            card.className = "cyber-card flex flex-col h-full";
+            
+            let nodesHtml = '';
+            if (srv.status === 'online' && srv.nodes.length > 0) {
+                srv.nodes.forEach(n => {
+                    const isOnline = n.status === 'online';
+                    const cpuPercent = Math.round((n.cpu || 0) * 100);
+                    const memPercent = n.maxmem ? Math.round((n.mem / n.maxmem) * 100) : 0;
+                    
+                    const cpuColor = cpuPercent > 85 ? 'bar-red' : (cpuPercent > 60 ? 'bar-cyan' : 'bar-green');
+                    const memColor = memPercent > 85 ? 'bar-red' : (memPercent > 60 ? 'bar-cyan' : 'bar-green');
+                    
+                    nodesHtml += `
+                        <div class="mt-4 p-3 bg-black/40 border border-cyan-dim rounded cursor-pointer hover:border-cyan hover:bg-cyan/5 transition-colors group" onclick="loadNodeVMs(${srv.id}, '${srv.name}', '${n.node}')">
+                            <div class="flex justify-between items-center mb-2">
+                                <div class="font-mono text-sm text-white group-hover:text-cyan group-hover:glitch" data-text="${n.node}"><span class="status-dot ${isOnline ? 'online' : 'offline'} mr-2"></span>${n.node}</div>
+                                <div class="text-xs text-cyan-dim font-mono">>_VIEW_VMS</div>
+                            </div>
+                            ${isOnline ? `
+                            <div class="flex items-center gap-2 mb-1.5">
+                                <div class="text-[10px] text-cyan-dim font-mono w-8">CPU</div>
+                                <div class="cyber-bar-container flex-1"><div class="cyber-bar ${cpuColor}" style="width: ${cpuPercent}%"></div></div>
+                                <div class="text-[10px] text-cyan font-mono w-8 text-right">${cpuPercent}%</div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="text-[10px] text-cyan-dim font-mono w-8">RAM</div>
+                                <div class="cyber-bar-container flex-1"><div class="cyber-bar ${memColor}" style="width: ${memPercent}%"></div></div>
+                                <div class="text-[10px] text-cyan font-mono w-8 text-right">${memPercent}%</div>
+                            </div>
+                            ` : '<div class="text-xs text-magenta font-mono">NODE_OFFLINE</div>'}
+                        </div>
+                    `;
+                });
+            } else if (srv.status === 'offline') {
+                nodesHtml = '<div class="mt-4 text-magenta font-mono text-sm uppercase text-center py-4 border border-magenta/30 bg-magenta/10">LINK_UNREACHABLE</div>';
+            } else {
+                nodesHtml = '<div class="mt-4 text-cyan-dim font-mono text-sm text-center py-4 border border-cyan-dim/30">NO_COMPUTE_NODES_FOUND</div>';
+            }
+            
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-2 border-b border-cyan-dim pb-3">
+                    <div>
+                        <div class="font-bold text-xl text-cyan font-mono tracking-wider">${srv.name}</div>
+                        <div class="text-xs text-cyan-dim font-mono uppercase mt-1">STATUS: <span class="${srv.status === 'online' ? 'text-green-500' : 'text-magenta'}">${srv.status}</span></div>
+                    </div>
+                </div>
+                
+                ${srv.status === 'online' ? `
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <div class="bg-black/40 p-2 border border-cyan-dim">
+                        <div class="text-[10px] text-cyan-dim font-mono mb-1">RUNNING_VMS</div>
+                        <div class="text-2xl font-bold font-mono text-white">${srv.vms_running}</div>
+                    </div>
+                    <div class="bg-black/40 p-2 border border-cyan-dim">
+                        <div class="text-[10px] text-cyan-dim font-mono mb-1">TOTAL_VMS</div>
+                        <div class="text-2xl font-bold font-mono text-white">${srv.vms_total}</div>
+                    </div>
+                </div>
+                ` : ''}
+                
+                <div class="flex-1 mt-2">
+                    ${nodesHtml}
+                </div>
+            `;
+            dashboardGrid.appendChild(card);
+        });
         
     } catch (err) {
-        loginError.textContent = err.message;
-        loginError.classList.remove('hidden');
-        // Shake animation
-        loginForm.classList.add('animate-pulse');
-        setTimeout(() => loginForm.classList.remove('animate-pulse'), 500);
-    } finally {
-        loginBtn.innerHTML = originalText;
-        loginBtn.disabled = false;
+        dashboardGrid.innerHTML = `<div class="col-span-full text-center text-magenta font-mono bg-magenta/10 border border-magenta p-4 mt-4 w-full">${err.message}</div>`;
     }
-});
+}
 
-logoutBtn.addEventListener('click', async () => {
-    if (sessionToken) {
-        try {
-            await fetch(`${API_BASE}/logout`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${sessionToken}` }
-            });
-        } catch (e) {
-            console.error("Logout error", e);
-        }
-    }
-    sessionToken = null;
-    localStorage.removeItem('pve_token');
-    updateView();
-});
-
-// Data Fetching & Rendering
 function formatMemory(bytes) {
     if (!bytes) return '0 B';
     const k = 1024;
@@ -167,112 +341,30 @@ function formatUptime(seconds) {
     const d = Math.floor(seconds / (3600*24));
     const h = Math.floor(seconds % (3600*24) / 3600);
     const m = Math.floor(seconds % 3600 / 60);
-    const s = Math.floor(seconds % 60);
-    
     if (d > 0) return `${d}d ${h}h`;
     if (h > 0) return `${h}h ${m}m`;
-    if (m > 0) return `${m}m`;
-    return `${s}s`;
+    return `${m}m`;
 }
 
-async function loadNodes() {
-    nodesContainer.innerHTML = '<div class="text-center py-4 text-slate-500 text-sm"><i class="ph ph-circle-notch animate-spin text-2xl mb-2"></i><br>Finding nodes...</div>';
-    
-    try {
-        const nodes = await fetchWithAuth('/nodes');
-        
-        nodesContainer.innerHTML = '';
-        
-        if (nodes.length === 0) {
-            nodesContainer.innerHTML = '<div class="text-center py-8 text-slate-500 text-sm glass-card border glass-border rounded-xl col-span-full">No nodes available.</div>';
-            return;
-        }
-
-        nodes.forEach(node => {
-            // Memory percentage
-            const memPercent = node.maxmem ? Math.round((node.mem / node.maxmem) * 100) : 0;
-            const cpuPercent = Math.round((node.cpu || 0) * 100);
-            const isOnline = node.status === 'online';
-            
-            const card = document.createElement('div');
-            card.className = `glass-card p-4 rounded-2xl border glass-border cursor-pointer interactive-card transition relative overflow-hidden group ${isOnline ? 'hover:border-blue-500/50' : 'opacity-70'}`;
-            
-            card.innerHTML = `
-                <div class="flex justify-between items-start mb-3">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center relative">
-                            <i class="ph-fill ph-hard-drives text-xl ${isOnline ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'}"></i>
-                            <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-white dark:border-slate-800 rounded-full ${isOnline ? 'bg-status-running' : 'bg-status-stopped'}"></span>
-                        </div>
-                        <div>
-                            <h3 class="font-semibold text-lg leading-tight group-hover:text-blue-500 transition-colors">${escapeHTML(node.node)}</h3>
-                            <p class="text-xs text-slate-500 dark:text-slate-400 capitalize">${escapeHTML(node.status)}</p>
-                        </div>
-                    </div>
-                </div>
-                
-                ${isOnline ? `
-                <div class="grid grid-cols-2 gap-3 mt-4">
-                    <div class="bg-white/40 dark:bg-slate-800/40 p-2.5 rounded-xl">
-                        <div class="flex justify-between text-xs mb-1 text-slate-500 dark:text-slate-400">
-                            <span>CPU</span>
-                            <span class="font-medium text-slate-700 dark:text-slate-300">${cpuPercent}%</span>
-                        </div>
-                        <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                            <div class="bg-blue-500 h-1.5 rounded-full" style="width: ${cpuPercent}%"></div>
-                        </div>
-                    </div>
-                    <div class="bg-white/40 dark:bg-slate-800/40 p-2.5 rounded-xl">
-                        <div class="flex justify-between text-xs mb-1 text-slate-500 dark:text-slate-400">
-                            <span>RAM</span>
-                            <span class="font-medium text-slate-700 dark:text-slate-300">${memPercent}%</span>
-                        </div>
-                        <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                            <div class="bg-purple-500 h-1.5 rounded-full" style="width: ${memPercent}%"></div>
-                        </div>
-                    </div>
-                </div>
-                ` : ''}
-            `;
-            
-            card.addEventListener('click', () => {
-                if (isOnline) loadVMs(node.node);
-            });
-            
-            nodesContainer.appendChild(card);
-        });
-        
-    } catch (err) {
-        nodesContainer.innerHTML = `<div class="bg-red-500/10 text-red-500 p-4 rounded-xl text-sm text-center border border-red-500/20">${err.message}</div>`;
-    }
-}
-
-async function loadVMs(nodeName) {
+async function loadNodeVMs(serverId, serverName, nodeName) {
+    switchView('node-details-view');
+    detailServerName.textContent = serverName;
+    detailNodeName.textContent = nodeName;
     showLoading(true);
-    activeNodeName.textContent = nodeName;
-    vmsHeader.classList.remove('hidden');
-    vmsContainer.classList.remove('hidden');
     vmsContainer.innerHTML = '';
+    detailVmCount.textContent = '...';
     
-    // Scroll down to VMs section smoothly
-    setTimeout(() => {
-        vmsHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-    
-    // Prevent race conditions from rapid clicking
     const fetchRef = Symbol('fetchVMs');
     currentVMsFetchRef = fetchRef;
     
     try {
-        const vms = await fetchWithAuth(`/nodes/${nodeName}/vms`);
-        
-        // If another node was clicked before this request finished, ignore these results
+        const vms = await fetchWithAuth(`/servers/${serverId}/nodes/${nodeName}/vms`);
         if (currentVMsFetchRef !== fetchRef) return;
         
-        vmCount.textContent = vms.length;
+        detailVmCount.textContent = vms.length;
         
         if (vms.length === 0) {
-            vmsContainer.innerHTML = '<div class="text-center py-8 text-slate-500 text-sm glass-card border glass-border rounded-xl">No Virtual Machines found on this node.</div>';
+            vmsContainer.innerHTML = '<div class="col-span-full text-center py-12 border border-cyan-dim cyber-card"><div class="text-cyan-dim font-mono">NO COMPUTE RESOURCES ALLOCATED ON THIS NODE</div></div>';
             return;
         }
         
@@ -282,53 +374,59 @@ async function loadVMs(nodeName) {
             const cpuPercent = Math.round((vm.cpu || 0) * 100);
             
             const card = document.createElement('div');
-            // Adding a staggered fade-in animation
-            card.className = `glass-card p-3.5 rounded-2xl border glass-border hover:shadow-md transition relative animate-fade-in`;
-            card.style.animationDelay = `${i * 50}ms`;
+            card.className = `cyber-card p-3 border ${isRunning ? 'border-cyan-dim' : 'border-[#333] opacity-60'} hover:border-cyan transition-colors`;
+            card.style.animation = `fade-in 0.3s ease-out ${i * 0.05}s forwards`;
+            card.style.opacity = '0';
             
+            // Re-using the logic from the old dash, injecting into new cyber-UI
             card.innerHTML = `
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-3 w-full">
-                        <div class="relative shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${vm.type === 'qemu' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-orange-500/10 text-orange-500'}">
-                            <i class="ph-fill ${vm.type === 'qemu' ? 'ph-desktop' : 'ph-package'} text-xl"></i>
-                            <span class="absolute bottom-0 right-0 w-3 h-3 border-2 border-white dark:border-slate-800 rounded-full ${isRunning ? 'bg-status-running' : 'bg-status-stopped'}"></span>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="text-2xl ${isRunning ? (vm.type === 'qemu' ? 'text-cyan' : 'text-green-400') : 'text-[#555]'}">
+                            <i class="${vm.type === 'qemu' ? 'ph ph-desktop' : 'ph ph-package'}"></i>
                         </div>
-                        
-                        <div class="flex-1 min-w-0 pr-2">
-                            <div class="flex items-center gap-2">
-                                <h4 class="font-medium text-[15px] truncate">${escapeHTML(vm.name || 'VM '+vm.vmid)}</h4>
-                                <span class="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">ID: ${vm.vmid}</span>
-                            </div>
-                            
-                            <div class="flex items-center gap-3 mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                ${isRunning ? `
-                                    <div class="flex items-center gap-1"><i class="ph-fill ph-cpu"></i> ${cpuPercent}%</div>
-                                    <div class="flex items-center gap-1"><i class="ph-fill ph-memory"></i> ${formatMemory(vm.maxmem)}</div>
-                                    <div class="flex items-center gap-1 ml-auto"><i class="ph-fill ph-clock"></i> ${formatUptime(vm.uptime)}</div>
-                                ` : `
-                                    <span>Stopped</span>
-                                `}
-                            </div>
+                        <div>
+                            <h4 class="font-bold text-white font-mono text-sm truncate max-w-[150px]">${vm.name || 'VM_'+vm.vmid}</h4>
+                            <div class="text-[10px] text-cyan-dim font-mono">ID: ${vm.vmid} // ${vm.type.toUpperCase()}</div>
                         </div>
                     </div>
+                    <div class="status-dot ${isRunning ? 'online' : 'offline'}"></div>
                 </div>
                 
                 ${isRunning ? `
-                <div class="w-full h-1 bg-slate-200 dark:bg-slate-700 absolute bottom-0 left-0">
-                    <div class="h-1 bg-gradient-to-r from-blue-500 to-indigo-500" style="width: ${(cpuPercent + memPercent)/2}%"></div>
+                <div class="grid grid-cols-2 gap-2 text-[10px] font-mono mb-2">
+                    <div class="bg-black/50 p-1 border border-cyan-dim/50"><span class="text-cyan-dim">CPU:</span> ${cpuPercent}%</div>
+                    <div class="bg-black/50 p-1 border border-cyan-dim/50"><span class="text-cyan-dim">RAM:</span> ${formatMemory(vm.maxmem)}</div>
+                    <div class="bg-black/50 p-1 border border-cyan-dim/50 col-span-2"><span class="text-cyan-dim">UPTIME:</span> ${formatUptime(vm.uptime)}</div>
                 </div>
-                ` : ''}
+                <div class="cyber-bar-container h-1">
+                    <div class="cyber-bar bar-cyan" style="width: ${(cpuPercent + memPercent)/2}%"></div>
+                </div>
+                ` : '<div class="text-xs text-magenta font-mono py-1 border border-magenta/30 bg-magenta/10 text-center mt-2">HALTED</div>'}
             `;
             
             vmsContainer.appendChild(card);
         });
         
     } catch (err) {
-        vmsContainer.innerHTML = `<div class="bg-red-500/10 text-red-500 p-4 rounded-xl text-sm text-center border border-red-500/20">${err.message}</div>`;
+        vmsContainer.innerHTML = `<div class="col-span-full border border-magenta text-magenta bg-magenta/10 p-4 font-mono">${err.message}</div>`;
     } finally {
         showLoading(false);
     }
 }
 
-// Initial Boot
-updateView();
+// Initial Boot CSS injection for animations missing in tailwind/static
+const style = document.createElement('style');
+style.innerHTML = `
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+    animation: fade-in 0.4s ease-out forwards;
+}
+`;
+document.head.appendChild(style);
+
+// Run init
+updateNav();

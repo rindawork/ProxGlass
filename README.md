@@ -44,11 +44,11 @@ A beautiful, modern, "glassware-style" web console for Proxmox Virtual Environme
    ```
    Or using Uvicorn directly:
    ```bash
-   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+   uvicorn main:app --host 0.0.0.0 --port 9000 --reload
    ```
 
 4. **Access the Console**:
-   Open your browser and navigate to `http://localhost:8000`.
+   Open your browser and navigate to `http://localhost:9000`.
 
 ## Logging In
 
