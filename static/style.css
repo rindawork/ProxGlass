@@ -1,75 +1,99 @@
 /* static/style.css */
 
+/* Glass Effects */
 .glass-header {
-    background: var(--glass-light);
+    background: rgba(255, 255, 255, 0.7);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }
-
 .dark .glass-header {
-    background: var(--glass-dark);
+    background: rgba(15, 23, 42, 0.7);
 }
 
 .glass-card {
-    background: var(--glass-light);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
-
 .dark .glass-card {
-    background: var(--glass-dark);
+    background: rgba(30, 41, 59, 0.6);
 }
 
 .glass-border {
-    border-color: var(--glass-border-light);
+    border-color: rgba(0, 0, 0, 0.05);
 }
-
 .dark .glass-border {
-    border-color: var(--glass-border-dark);
+    border-color: rgba(255, 255, 255, 0.08);
 }
 
 .interactive-card:active {
     transform: scale(0.98);
 }
 
-/* Background Animations */
+/* Animations */
 @keyframes blob {
     0% { transform: translate(0px, 0px) scale(1); }
     33% { transform: translate(30px, -50px) scale(1.1); }
     66% { transform: translate(-20px, 20px) scale(0.9); }
     100% { transform: translate(0px, 0px) scale(1); }
 }
-
 .animate-blob {
     animation: blob 7s infinite;
 }
-
-.animation-delay-2000 {
-    animation-delay: 2s;
-}
-
-.animation-delay-4000 {
-    animation-delay: 4s;
-}
+.animation-delay-2000 { animation-delay: 2s; }
+.animation-delay-4000 { animation-delay: 4s; }
 
 /* Status dots */
 .bg-status-running { background-color: #22c55e; }
 .bg-status-stopped { background-color: #ef4444; }
 
-/* Custom Scrollbar for better mobile feel */
+/* Modern Pill Buttons */
+.pill-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 0.75rem;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #64748b; /* slate-500 */
+}
+
+.dark .pill-btn {
+    color: #94a3b8; /* slate-400 */
+}
+
+.pill-btn:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.dark .pill-btn:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.pill-btn.active {
+    background: white;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    color: #2563eb; /* blue-600 */
+}
+
+.dark .pill-btn.active {
+    background: #1e293b; /* slate-800 */
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
+    color: #60a5fa; /* blue-400 */
+}
+
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
-    height: 6px;
 }
 ::-webkit-scrollbar-track {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.5);
-    border-radius: 20px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
 }
 .dark ::-webkit-scrollbar-thumb {
-    background-color: rgba(71, 85, 105, 0.5);
+    background: rgba(255, 255, 255, 0.1);
 }
 
 /* Smooth fade in */

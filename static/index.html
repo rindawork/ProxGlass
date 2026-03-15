@@ -51,6 +51,7 @@
             <div id="nav-links" class="hidden flex items-center gap-1 mr-2 border-r border-slate-300 dark:border-slate-700 pr-3 md:pr-4">
                 <button id="nav-btn-dashboard" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition">Dashboard</button>
                 <button id="nav-btn-servers" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition">Servers</button>
+                <button id="nav-btn-settings" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition">Settings</button>
             </div>
             
             <button id="theme-toggle" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition">
@@ -114,7 +115,21 @@
 
         <!-- Dashboard View -->
         <div id="dashboard-view" class="hidden flex-1 animate-fade-in w-full">
-            <h2 class="text-2xl font-semibold mb-6 ml-1">Fleet Overview</h2>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <h2 class="text-2xl font-semibold ml-1">Fleet Overview</h2>
+                
+                <!-- Grouping remains on dashboard -->
+                <div class="flex items-center gap-2 bg-white/40 dark:bg-slate-800/40 p-1 rounded-2xl border glass-border backdrop-blur-md">
+                    <div class="flex items-center gap-1 px-3 py-1">
+                        <i class="ph ph-rows text-slate-400 mr-1"></i>
+                        <select id="group-by" class="bg-transparent border-none text-xs font-semibold focus:ring-0 cursor-pointer py-1 pr-8">
+                            <option value="none">Group: None</option>
+                            <option value="status">Group: Status</option>
+                            <option value="server">Group: Server</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
             
             <div id="dashboard-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8">
                 <!-- Server Cards injected here -->
@@ -138,9 +153,10 @@
                 <!-- Servers injected here -->
             </div>
 
-            <!-- Add Server Form -->
+            <!-- Add/Edit Server Form -->
             <div id="add-server-form-container" class="hidden glass-card p-6 rounded-3xl border glass-border shadow-xl mb-10">
-                <h3 class="text-lg font-semibold mb-5 flex items-center gap-2"><i class="ph-fill ph-plus-circle text-blue-500"></i> Combine New Instance</h3>
+                <h3 id="form-title" class="text-lg font-semibold mb-5 flex items-center gap-2"><i class="ph-fill ph-plus-circle text-blue-500"></i> Combine New Instance</h3>
+                <input type="hidden" id="edit-srv-id" value="">
                 <form id="add-server-form" class="space-y-5">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div class="space-y-1">
@@ -175,6 +191,66 @@
                 </form>
             </div>
         </div>
+        
+        <!-- Settings & User Management View -->
+        <div id="settings-view" class="hidden flex-1 animate-fade-in w-full space-y-8">
+            <div class="ml-1">
+                <h2 class="text-2xl font-semibold">Settings</h2>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Configure your account and user access.</p>
+            </div>
+
+            <!-- Profile / Change Password Section -->
+            <div class="glass-card p-6 rounded-3xl border glass-border shadow-xl">
+                <h3 class="text-lg font-semibold mb-5 flex items-center gap-2 text-blue-500"><i class="ph-fill ph-user-circle"></i> Security Profile</h3>
+                <form id="change-pass-form" class="max-w-md space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-medium text-slate-500 dark:text-slate-400 ml-1">New Password</label>
+                        <input type="password" id="new-password" required class="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder:text-slate-400" placeholder="••••••••">
+                    </div>
+                    <div id="pass-success" class="hidden text-sm text-green-500 bg-green-500/10 p-2 rounded-lg">Password updated!</div>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow-lg shadow-blue-500/20">Update Password</button>
+                </form>
+            </div>
+
+            <!-- User Management Section (Admins Only) -->
+            <div id="admin-section" class="hidden glass-card p-6 rounded-3xl border glass-border shadow-xl">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-semibold flex items-center gap-2 text-purple-500"><i class="ph-fill ph-users-three"></i> Cluster Operators</h3>
+                    <button id="show-add-user-btn" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-md shadow-purple-500/20">
+                        <i class="ph ph-plus-circle"></i> ADD USER
+                    </button>
+                </div>
+                
+                <!-- Add User Form -->
+                <div id="add-user-form-container" class="hidden mb-8 p-5 bg-white/30 dark:bg-slate-800/30 rounded-2xl border glass-border">
+                    <form id="add-user-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-xs font-medium text-slate-500 ml-1">Username</label>
+                            <input type="text" id="new-user-name" required class="w-full px-3 py-2 rounded-lg bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-sm">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs font-medium text-slate-500 ml-1">Initial Password</label>
+                            <input type="password" id="new-user-pass" required class="w-full px-3 py-2 rounded-lg bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-sm">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs font-medium text-slate-500 ml-1">RBAC Role</label>
+                            <select id="new-user-role" class="w-full px-3 py-2 rounded-lg bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-sm cursor-pointer">
+                                <option value="user">User (Standard)</option>
+                                <option value="admin">Administrator</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-3 flex justify-end gap-2 mt-2">
+                             <button type="button" id="cancel-user-btn" class="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">CANCEL</button>
+                             <button type="submit" class="px-4 py-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition">CREATE OPERATOR</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="user-list" class="space-y-3">
+                    <!-- Users injected here -->
+                </div>
+            </div>
+        </div>
 
         <!-- Node Drilldown View (VMs) -->
         <div id="node-details-view" class="hidden flex-1 animate-fade-in w-full">
@@ -182,12 +258,30 @@
                 <i class="ph-bold ph-arrow-left"></i> Back to Dashboard
             </button>
             
-            <div id="vms-header" class="flex justify-between items-end mb-6 ml-1">
+            <div id="vms-header" class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 ml-1 gap-4">
                 <div>
                     <h2 class="text-2xl font-semibold"><span id="detail-server-name" class="text-blue-500 font-light mr-1"></span> <span id="detail-node-name"></span></h2>
                     <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Virtual Machine Allocation</p>
                 </div>
-                <span class="text-xs font-medium py-1.5 px-3 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 mb-1 border border-slate-300 dark:border-slate-700 shadow-sm"><span id="detail-vm-count" class="font-bold mr-1">0</span> Instances</span>
+
+                <!-- Modern Pill Filters -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Status Filter -->
+                    <div class="flex p-1 bg-white/40 dark:bg-slate-800/40 rounded-xl border glass-border backdrop-blur-sm shadow-sm" id="status-pills">
+                        <button data-value="all" class="pill-btn active">All</button>
+                        <button data-value="running" class="pill-btn">Running</button>
+                        <button data-value="stopped" class="pill-btn">Halted</button>
+                    </div>
+                    
+                    <!-- Type Filter -->
+                    <div class="flex p-1 bg-white/40 dark:bg-slate-800/40 rounded-xl border glass-border backdrop-blur-sm shadow-sm" id="type-pills">
+                        <button data-value="all" class="pill-btn active">All</button>
+                        <button data-value="qemu" class="pill-btn">VM</button>
+                        <button data-value="lxc" class="pill-btn">CT</button>
+                    </div>
+
+                    <span class="text-xs font-medium py-2 px-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 shadow-sm"><span id="detail-vm-count" class="font-bold mr-1">0</span> Instances</span>
+                </div>
             </div>
             
             <div id="vms-container" class="grid gap-3 lg:grid-cols-2 pb-8">

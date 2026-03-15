@@ -75,9 +75,16 @@ def init_db():
         """CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'user'
         )"""
     )
+    # Migration: add role column if it doesn't exist
+    c.execute("PRAGMA table_info(users)")
+    columns = [col[1] for col in c.fetchall()]
+    if "role" not in columns:
+        c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+
     c.execute(
         """CREATE TABLE IF NOT EXISTS servers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,8 +105,8 @@ def init_db():
             DEFAULT_ADMIN_PASS.encode("utf-8"), bcrypt.gensalt()
         ).decode("utf-8")
         c.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (DEFAULT_ADMIN_USER, hashed),
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (DEFAULT_ADMIN_USER, hashed, "admin"),
         )
 
     conn.commit()
@@ -130,6 +137,22 @@ class UserAuth(BaseModel):
     password: str
 
 
+class PasswordChange(BaseModel):
+    new_password: str
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
+
+
+class UserResponseInternal(BaseModel):
+    id: int
+    username: str
+    role: str
+
+
 class ServerCreate(BaseModel):
     name: str
     host: str
@@ -155,7 +178,7 @@ def get_db():
         conn.close()
 
 
-def get_current_user(authorization: str = Header(None)):
+def get_current_user(authorization: str = Header(None), db: sqlite3.Connection = Depends(get_db)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
     token = authorization.split(" ")[1]
@@ -171,7 +194,21 @@ def get_current_user(authorization: str = Header(None)):
         )
 
     session["expires"] = now + SESSION_TIMEOUT
-    return session["user_id"]
+    
+    # Fetch user data to ensure role and presence
+    cursor = db.cursor()
+    cursor.execute("SELECT id, username, role FROM users WHERE id = ?", (session["user_id"],))
+    user = cursor.fetchone()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+        
+    return dict(user)
+
+
+def get_current_admin(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 
 def get_proxmox_api(server, verify_ssl=None, is_encrypted=True):
@@ -221,7 +258,7 @@ def login_user(req: UserAuth, db: sqlite3.Connection = Depends(get_db)):
 
     cursor = db.cursor()
     cursor.execute(
-        "SELECT id, password_hash FROM users WHERE username = ?", (req.username,)
+        "SELECT id, password_hash, role FROM users WHERE username = ?", (req.username,)
     )
     user = cursor.fetchone()
 
@@ -240,7 +277,57 @@ def login_user(req: UserAuth, db: sqlite3.Connection = Depends(get_db)):
     failed_logins.pop(req.username, None)
     token = secrets.token_urlsafe(32)
     sessions[token] = {"user_id": user["id"], "expires": time.time() + SESSION_TIMEOUT}
-    return {"token": token}
+    return {"token": token, "role": user["role"]}
+
+
+@app.get("/api/app/me")
+def get_me(user: dict = Depends(get_current_user)):
+    return user
+
+
+@app.put("/api/users/me/password")
+def change_password(
+    req: PasswordChange,
+    user: dict = Depends(get_current_user),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    hashed = bcrypt.hashpw(
+        req.new_password.encode("utf-8"), bcrypt.gensalt()
+    ).decode("utf-8")
+    cursor = db.cursor()
+    cursor.execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?", (hashed, user["id"])
+    )
+    db.commit()
+    return {"message": "Password updated"}
+
+
+@app.get("/api/admin/users", response_model=List[UserResponseInternal])
+def list_users(admin: dict = Depends(get_current_admin), db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("SELECT id, username, role FROM users")
+    return [dict(row) for row in cursor.fetchall()]
+
+
+@app.post("/api/admin/users")
+def create_user(
+    req: UserCreate,
+    admin: dict = Depends(get_current_admin),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    hashed = bcrypt.hashpw(
+        req.password.encode("utf-8"), bcrypt.gensalt()
+    ).decode("utf-8")
+    cursor = db.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (req.username, hashed, req.role),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    return {"message": "User created"}
 
 
 @app.post("/api/app/logout")
@@ -253,13 +340,13 @@ def logout_user(authorization: str = Header(None)):
 
 @app.get("/api/servers", response_model=List[ServerResponse])
 def get_servers(
-    user_id: int = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
     db: sqlite3.Connection = Depends(get_db),
 ):
     cursor = db.cursor()
     cursor.execute(
         "SELECT id, name, host, pve_username, verify_ssl FROM servers WHERE user_id = ?",
-        (user_id,),
+        (user["id"],),
     )
     return [dict(row) for row in cursor.fetchall()]
 
@@ -267,7 +354,7 @@ def get_servers(
 @app.post("/api/servers")
 def add_server(
     req: ServerCreate,
-    user_id: int = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
     db: sqlite3.Connection = Depends(get_db),
 ):
     try:
@@ -293,21 +380,56 @@ def add_server(
     cursor.execute(
         """INSERT INTO servers (user_id, name, host, pve_username, pve_password, verify_ssl)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (user_id, req.name, req.host, req.pve_username, encrypted_pw, req.verify_ssl),
+        (user["id"], req.name, req.host, req.pve_username, encrypted_pw, req.verify_ssl),
     )
     db.commit()
     return {"message": "Server added"}
 
 
+@app.put("/api/servers/{server_id}")
+def update_server(
+    server_id: int,
+    req: ServerCreate,
+    user: dict = Depends(get_current_user),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    # Verify owner
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM servers WHERE id = ? AND user_id = ?", (server_id, user["id"]))
+    if not cursor.fetchone():
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    try:
+        # Test connection first
+        px = get_proxmox_api({
+            "host": req.host,
+            "pve_username": req.pve_username,
+            "pve_password": req.pve_password,
+            "verify_ssl": req.verify_ssl,
+        }, is_encrypted=False)
+        px.nodes.get()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Connection failed: {str(e)}")
+
+    encrypted_pw = encrypt_password(req.pve_password)
+    cursor.execute(
+        """UPDATE servers SET name = ?, host = ?, pve_username = ?, pve_password = ?, verify_ssl = ?
+           WHERE id = ? AND user_id = ?""",
+        (req.name, req.host, req.pve_username, encrypted_pw, req.verify_ssl, server_id, user["id"])
+    )
+    db.commit()
+    return {"message": "Server updated"}
+
+
 @app.delete("/api/servers/{server_id}")
 def delete_server(
     server_id: int,
-    user_id: int = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
     db: sqlite3.Connection = Depends(get_db),
 ):
     cursor = db.cursor()
     cursor.execute(
-        "DELETE FROM servers WHERE id = ? AND user_id = ?", (server_id, user_id)
+        "DELETE FROM servers WHERE id = ? AND user_id = ?", (server_id, user["id"])
     )
     db.commit()
     return {"message": "Server deleted"}
@@ -315,11 +437,11 @@ def delete_server(
 
 @app.get("/api/dashboard")
 def get_dashboard(
-    user_id: int = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
     db: sqlite3.Connection = Depends(get_db),
 ):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM servers WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT * FROM servers WHERE user_id = ?", (user["id"],))
     servers = cursor.fetchall()
 
     dashboard_data = []
@@ -373,12 +495,12 @@ def get_dashboard(
 @app.get("/api/servers/{server_id}/nodes")
 def get_server_nodes(
     server_id: int,
-    user_id: int = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
     db: sqlite3.Connection = Depends(get_db),
 ):
     cursor = db.cursor()
     cursor.execute(
-        "SELECT * FROM servers WHERE id = ? AND user_id = ?", (server_id, user_id)
+        "SELECT * FROM servers WHERE id = ? AND user_id = ?", (server_id, user["id"])
     )
     server = cursor.fetchone()
     if not server:
@@ -395,12 +517,12 @@ def get_server_nodes(
 def get_server_node_vms(
     server_id: int,
     node: str,
-    user_id: int = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
     db: sqlite3.Connection = Depends(get_db),
 ):
     cursor = db.cursor()
     cursor.execute(
-        "SELECT * FROM servers WHERE id = ? AND user_id = ?", (server_id, user_id)
+        "SELECT * FROM servers WHERE id = ? AND user_id = ?", (server_id, user["id"])
     )
     server = cursor.fetchone()
     if not server:
