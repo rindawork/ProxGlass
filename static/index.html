@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Proxmox Mobile</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        glass: {
+                            light: 'rgba(255, 255, 255, 0.7)',
+                            dark: 'rgba(30, 41, 59, 0.7)',
+                            borderLight: 'rgba(255, 255, 255, 0.3)',
+                            borderDark: 'rgba(255, 255, 255, 0.1)',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-500 font-['Inter'] relative min-h-screen overflow-x-hidden">
+    
+    <!-- Animated Background Map/Bubbles -->
+    <div class="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/20 blur-3xl animate-blob"></div>
+        <div class="absolute top-[20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-purple-500/20 blur-3xl animate-blob animation-delay-2000"></div>
+        <div class="absolute bottom-[-20%] left-[20%] w-[60%] h-[60%] rounded-full bg-emerald-500/20 blur-3xl animate-blob animation-delay-4000"></div>
+    </div>
+
+    <!-- Top Navigation -->
+    <nav class="fixed top-0 w-full z-50 glass-header px-4 py-3 flex justify-between items-center transition-all duration-300 shadow-sm border-b glass-border">
+        <div class="flex items-center gap-2">
+            <i class="ph-fill ph-hard-drives text-2xl text-blue-500"></i>
+            <h1 class="text-xl font-semibold tracking-tight">Proxmox<span class="font-light">Mobile</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="theme-toggle" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition">
+                <i class="ph ph-sun text-xl hidden dark:block"></i>
+                <i class="ph ph-moon text-xl block dark:hidden"></i>
+            </button>
+            <button id="logout-btn" class="hidden p-2 text-red-500 rounded-full hover:bg-red-500/10 transition">
+                <i class="ph ph-sign-out text-xl"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="relative z-10 pt-20 pb-10 px-4 max-w-lg mx-auto min-h-screen flex flex-col">
+        
+        <!-- Login Screen -->
+        <div id="login-view" class="flex-1 flex flex-col justify-center animate-fade-in">
+            <div class="glass-card p-6 rounded-3xl shadow-xl glass-border border">
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 text-blue-500">
+                        <i class="ph ph-lock-key text-3xl"></i>
+                    </div>
+                    <h2 class="text-2xl font-semibold mb-1">Welcome Back</h2>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Sign in to your Proxmox server</p>
+                </div>
+                
+                <form id="login-form" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-medium text-slate-500 dark:text-slate-400 ml-1">Server Address</label>
+                        <div class="relative">
+                            <i class="ph ph-globe absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" id="host" required placeholder="pve.local:8006" class="w-full pl-10 pr-4 py-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder:text-slate-400">
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-1">
+                        <label class="text-xs font-medium text-slate-500 dark:text-slate-400 ml-1">Username / Token ID</label>
+                        <div class="relative">
+                            <i class="ph ph-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" id="username" required placeholder="root@pam or user@pve!token" class="w-full pl-10 pr-4 py-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder:text-slate-400">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-xs font-medium text-slate-500 dark:text-slate-400 ml-1">Password / Token Secret</label>
+                        <div class="relative">
+                            <i class="ph ph-key absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="password" id="password" required placeholder="••••••••" class="w-full pl-10 pr-4 py-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder:text-slate-400">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 ml-1 mt-2 mb-2">
+                        <input type="checkbox" id="verify-ssl" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 bg-white/50 dark:bg-slate-800/50">
+                        <label for="verify-ssl" class="text-xs font-medium text-slate-500 dark:text-slate-400">Verify SSL Certificate</label>
+                    </div>
+
+                    <div id="login-error" class="hidden text-sm text-red-500 text-center font-medium bg-red-500/10 py-2 rounded-lg"></div>
+
+                    <button type="submit" id="login-submit" class="w-full py-3.5 mt-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all flex justify-center items-center gap-2 transform active:scale-95 shadow-lg shadow-blue-500/25">
+                        <span>Connect</span>
+                        <i class="ph ph-arrow-right font-bold"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard View -->
+        <div id="dashboard-view" class="hidden flex-1 flex flex-col animate-fade-in">
+            <h2 class="text-2xl font-semibold mb-4 ml-1">Cluster Nodes</h2>
+            
+            <div id="nodes-container" class="space-y-4 mb-8">
+                <!-- Nodes will be injected here -->
+                <div class="animate-pulse flex space-x-4 glass-card p-4 rounded-2xl">
+                    <div class="flex-1 space-y-4 py-1">
+                        <div class="h-4 bg-slate-300 dark:bg-slate-700 rounded w-3/4"></div>
+                        <div class="space-y-2">
+                            <div class="h-4 bg-slate-300 dark:bg-slate-700 rounded"></div>
+                            <div class="h-4 bg-slate-300 dark:bg-slate-700 rounded w-5/6"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="vms-header" class="hidden flex justify-between items-end mb-4 ml-1">
+                <h2 class="text-xl font-semibold">Virtual Machines (<span id="active-node-name"></span>)</h2>
+                <span id="vm-count" class="text-xs font-medium py-1 px-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"></span>
+            </div>
+            
+            <div id="vms-container" class="hidden space-y-3 pb-8">
+                <!-- VMs will be injected here -->
+            </div>
+            
+            <!-- Global loading overlay -->
+            <div id="loading-overlay" class="hidden fixed inset-0 z-50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm flex justify-center items-center">
+                <div class="glass-card p-4 rounded-2xl flex items-center gap-3 border glass-border shadow-xl">
+                    <i class="ph ph-circle-notch animate-spin text-2xl text-blue-500"></i>
+                    <span class="font-medium text-sm">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- JS -->
+    <script src="app.js"></script>
+</body>
+</html>
