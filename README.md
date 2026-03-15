@@ -62,7 +62,17 @@ ProxGlass comes with a default master admin account:
 > [!IMPORTANT]
 > **Change your password immediately** after your first login via the **Settings** menu to secure your installation.
 
-### 2. Environment Variables
+### 2. Encryption Key (`secret.key`)
+ProxGlass uses AES-256 encryption to protect your Proxmox credentials. This requires a secret key.
+
+- **Auto-Generation**: If the file does not exist, ProxGlass will automatically generate a `secret.key` file in the root directory on first startup.
+- **Manual Generation**: If you want to generate it manually (e.g., for production setups), you can run:
+  ```bash
+  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" > secret.key
+  ```
+- **Security**: The `secret.key` is automatically ignored by Git (via `.gitignore`). **You must back up this file manually.** If you lose it, you will not be able to decrypt your stored Proxmox passwords in the database.
+
+### 3. Environment Variables
 You can customize ProxGlass behavior using the following environment variables:
 
 | Variable | Description | Default |
