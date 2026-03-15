@@ -553,4 +553,5 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 if __name__ == "__main__":
     import uvicorn
     debug_mode = os.environ.get("PROXGLASS_DEBUG", "0") == "1"
-    uvicorn.run("main:app", host="0.0.0.0", port=9000, reload=debug_mode)  # nosec B104
+    port = int(os.environ.get("PROXGLASS_PORT", "9000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=debug_mode)  # nosec B104

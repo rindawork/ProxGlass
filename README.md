@@ -5,18 +5,23 @@ A beautiful, modern, "glassware-style" web console for Proxmox Virtual Environme
 ## Features
 
 - **Beautiful Glassmorphism UI**: Dynamic, vibrant, and visually pleasing interface.
+- **Multi-User & Role-based Access (RBAC)**: Support for multiple local users with "Admin" and "User" roles.
+- **Secure Credential Storage**: Proxmox passwords and API tokens are encrypted at rest using AES-256 (Fernet).
+- **Admin Management Console**: Administrators can manage access for other cluster operators.
 - **Real-time Node & VM Stats**: Quickly view CPU, memory, and status of your Proxmox nodes and virtual machines.
-- **Flexible Authentication**: Supports standard username/password login as well as Proxmox API Tokens (`User@Realm!TokenID`).
-- **Responsive Design**: Works seamlessly on both desktop and mobile devices.
+- **Flexible Connectivity**: Supports standard username/password login as well as Proxmox API Tokens (`User@Realm!TokenID`).
+- **Security Protections**: Built-in login rate limiting (lockout), security headers (HSTS, CSP-ready), and session timeout.
 
 ## Tech Stack
 
-- **Backend**: Python 3, FastAPI, Uvicorn, Proxmoxer
-- **Frontend**: HTML5, Vanilla JS, CSS with a modern Glassmorphism design system
+- **Backend**: Python 3.10+, FastAPI, Uvicorn, Proxmoxer
+- **Security**: Bcrypt (Password Hashing), Cryptography (AES Encryption)
+- **Frontend**: HTML5, Vanilla JS, Tailwind CSS, Phosphor Icons
+- **Database**: SQLite (No external database required)
 
 ## Installation & Setup
 
-1. **Clone the repository** (or download the files):
+1. **Clone the repository**:
    ```bash
    git clone <repository-url>
    cd test_app
@@ -42,21 +47,39 @@ A beautiful, modern, "glassware-style" web console for Proxmox Virtual Environme
    ```bash
    python main.py
    ```
-   Or using Uvicorn directly:
-   ```bash
-   uvicorn main:app --host 0.0.0.0 --port 9000 --reload
-   ```
+   *Note: On first run, ProxGlass will automatically generate an `app.db` file and a `secret.key` file for encryption.*
 
 4. **Access the Console**:
    Open your browser and navigate to `http://localhost:9000`.
 
-## Logging In
+## Initial Configuration
 
-When logging into the console, you have two options for the username:
-- **Standard User**: `user@pam` or `user@pve`
-- **API Token**: `user@pam!token_name` (with the token secret as the password)
+### 1. Master Admin Login
+ProxGlass comes with a default master admin account:
+- **Username**: `admin`
+- **Password**: `admin`
 
-If your Proxmox server is using a self-signed certificate (which is the default in many home labs), make sure to check the "Skip SSL Verification" box on the login screen.
+> [!IMPORTANT]
+> **Change your password immediately** after your first login via the **Settings** menu to secure your installation.
+
+### 2. Environment Variables
+You can customize ProxGlass behavior using the following environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PROXGLASS_PORT` | Port to run the server on. | `9000` |
+| `PROXGLASS_DB_FILE` | Path to the SQLite database file. | `app.db` |
+| `PROXGLASS_SECRET_KEY` | AES Key for credential encryption. If not set, it is read from/saved to `secret.key`. | *Generated* |
+| `PROXGLASS_DEBUG` | Enable debug mode (auto-reload backend). | `0` |
+
+### 3. Adding Proxmox Servers
+Once logged in, go to the **Servers** tab to connect your Proxmox instances. You can use standard credentials or API tokens. If your PVE server uses a self-signed certificate, ensure "Strictly Verify SSL Certificate" is **unchecked**.
+
+## Security Notes
+
+- **Password Lockout**: After 5 failed login attempts, the account will be locked for 5 minutes.
+- **Data Safety**: All Proxmox credentials are encrypted. Ensure you back up your `secret.key` file if you plan to move your `app.db`, otherwise you will lose access to your stored server settings.
+- **HTTPS**: It is highly recommended to run ProxGlass behind a reverse proxy (like Nginx or Caddy) to provide HTTPS encryption.
 
 ## License
 

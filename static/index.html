@@ -47,11 +47,11 @@
         </div>
         
         <div class="flex items-center gap-2 md:gap-4">
-            <!-- Nav Actions (Hidden when logged out) -->
-            <div id="nav-links" class="hidden flex items-center gap-1 mr-2 border-r border-slate-300 dark:border-slate-700 pr-3 md:pr-4">
-                <button id="nav-btn-dashboard" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition">Dashboard</button>
-                <button id="nav-btn-servers" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition">Servers</button>
-                <button id="nav-btn-settings" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition">Settings</button>
+            <!-- Desktop Nav Actions (Hidden on mobile or logged out) -->
+            <div id="nav-links-desktop" class="hidden md:flex items-center gap-1 mr-2 border-r border-slate-300 dark:border-slate-700 pr-4 transition-all duration-300">
+                <button id="nav-btn-dashboard" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition active-view">Dashboard</button>
+                <button id="nav-btn-servers" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition">Servers</button>
+                <button id="nav-btn-settings" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition">Settings</button>
             </div>
             
             <button id="theme-toggle" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition">
@@ -292,10 +292,25 @@
     </main>
 
     <!-- Global loading overlay -->
-    <div id="loading-overlay" class="hidden fixed inset-0 z-50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm flex justify-center items-center">
+    <div id="loading-overlay" class="hidden fixed inset-0 z-[60] bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm flex justify-center items-center">
         <div class="glass-card p-4 rounded-2xl flex items-center gap-3 border glass-border shadow-xl">
             <i class="ph ph-circle-notch animate-spin text-2xl text-blue-500"></i>
             <span class="font-medium text-sm">Synchronizing...</span>
+        </div>
+    </div>
+
+    <!-- Mobile Bottom Floating Navigation (Visible only on small screens when logged in) -->
+    <div id="mobile-nav" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 glass-header px-2 py-2 rounded-full border glass-border shadow-2xl transition-all duration-300 hidden md:hidden">
+        <div class="flex items-center gap-1">
+            <button id="mob-btn-dashboard" class="mob-nav-btn p-3 rounded-full flex items-center justify-center transition-all bg-blue-500/10 text-blue-500">
+                <i class="ph-fill ph-squares-four text-xl"></i>
+            </button>
+            <button id="mob-btn-servers" class="mob-nav-btn p-3 rounded-full flex items-center justify-center transition-all text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800">
+                <i class="ph-fill ph-hard-drives text-xl"></i>
+            </button>
+            <button id="mob-btn-settings" class="mob-nav-btn p-3 rounded-full flex items-center justify-center transition-all text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800">
+                <i class="ph-fill ph-gear text-xl"></i>
+            </button>
         </div>
     </div>
 

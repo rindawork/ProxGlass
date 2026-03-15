@@ -24,10 +24,16 @@ const dashboardView = document.getElementById('dashboard-view');
 const serversView = document.getElementById('servers-view');
 const nodeDetailsView = document.getElementById('node-details-view');
 
-const navLinks = document.getElementById('nav-links');
+const navLinksDesktop = document.getElementById('nav-links-desktop');
+const mobileNav = document.getElementById('mobile-nav');
+
 const navBtnDashboard = document.getElementById('nav-btn-dashboard');
 const navBtnServers = document.getElementById('nav-btn-servers');
 const navBtnSettings = document.getElementById('nav-btn-settings');
+
+const mobBtnDashboard = document.getElementById('mob-btn-dashboard');
+const mobBtnServers = document.getElementById('mob-btn-servers');
+const mobBtnSettings = document.getElementById('mob-btn-settings');
 const logoutBtn = document.getElementById('logout-btn');
 const navBrand = document.getElementById('nav-brand');
 
@@ -76,6 +82,31 @@ function showLoading(show) {
     else setTimeout(() => loadingOverlay.classList.add('hidden'), 200);
 }
 
+function updateActiveNav(activeView) {
+    // Desktop Nav
+    [navBtnDashboard, navBtnServers, navBtnSettings].forEach(btn => btn.classList.remove('active-view'));
+    if (activeView === 'dashboard-view') navBtnDashboard.classList.add('active-view');
+    else if (activeView === 'servers-view') navBtnServers.classList.add('active-view');
+    else if (activeView === 'settings-view') navBtnSettings.classList.add('active-view');
+
+    // Mobile Nav
+    const mobBtns = [mobBtnDashboard, mobBtnServers, mobBtnSettings];
+    mobBtns.forEach(btn => {
+        btn.classList.remove('active-view', 'bg-blue-500/10', 'text-blue-500');
+        btn.classList.add('text-slate-500', 'dark:text-slate-400');
+    });
+
+    let activeMobBtn = null;
+    if (activeView === 'dashboard-view') activeMobBtn = mobBtnDashboard;
+    else if (activeView === 'servers-view') activeMobBtn = mobBtnServers;
+    else if (activeView === 'settings-view') activeMobBtn = mobBtnSettings;
+
+    if (activeMobBtn) {
+        activeMobBtn.classList.remove('text-slate-500', 'dark:text-slate-400');
+        activeMobBtn.classList.add('active-view', 'bg-blue-500/10', 'text-blue-500');
+    }
+}
+
 function switchView(viewId) {
     authView.classList.add('hidden');
     dashboardView.classList.add('hidden');
@@ -83,11 +114,19 @@ function switchView(viewId) {
     nodeDetailsView.classList.add('hidden');
     settingsView.classList.add('hidden');
     document.getElementById(viewId).classList.remove('hidden');
+    
+    // Auto-sync nav
+    if (viewId === 'dashboard-view' || viewId === 'servers-view' || viewId === 'settings-view') {
+        updateActiveNav(viewId);
+    }
 }
 
 function updateNav() {
     if (sessionToken) {
-        navLinks.classList.remove('hidden');
+        // Keep hidden so it stays hidden on mobile, add md:flex to show on desktop
+        navLinksDesktop.classList.add('hidden', 'md:flex');
+        mobileNav.classList.remove('hidden');
+        
         logoutBtn.classList.remove('hidden');
         if (currentRole === 'admin') {
             adminSection.classList.remove('hidden');
@@ -97,7 +136,10 @@ function updateNav() {
         switchView('dashboard-view');
         loadDashboard();
     } else {
-        navLinks.classList.add('hidden');
+        navLinksDesktop.classList.add('hidden');
+        navLinksDesktop.classList.remove('md:flex');
+        mobileNav.classList.add('hidden');
+        
         logoutBtn.classList.add('hidden');
         switchView('auth-view');
     }
@@ -127,6 +169,11 @@ async function fetchWithAuth(url, options = {}) {
 navBtnDashboard.addEventListener('click', () => { switchView('dashboard-view'); loadDashboard(); });
 navBtnServers.addEventListener('click', () => { switchView('servers-view'); loadServers(); });
 navBtnSettings.addEventListener('click', () => { switchView('settings-view'); if(currentRole === 'admin') loadUsers(); });
+
+mobBtnDashboard.addEventListener('click', () => { switchView('dashboard-view'); loadDashboard(); });
+mobBtnServers.addEventListener('click', () => { switchView('servers-view'); loadServers(); });
+mobBtnSettings.addEventListener('click', () => { switchView('settings-view'); if(currentRole === 'admin') loadUsers(); });
+
 backToDashboardBtn.addEventListener('click', () => { switchView('dashboard-view'); loadDashboard(); });
 navBrand.addEventListener('click', () => { if(sessionToken) { switchView('dashboard-view'); loadDashboard(); }});
 
