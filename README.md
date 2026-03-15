@@ -24,7 +24,7 @@ A beautiful, modern, "glassware-style" web console for Proxmox Virtual Environme
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/rindawork/ProxGlass.git
-   cd test_app
+   cd ProxGlass
    ```
 
 2. **Install Dependencies**:
