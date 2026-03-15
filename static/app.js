@@ -4,24 +4,24 @@ const API_BASE = '/api';
 // State
 let sessionToken = localStorage.getItem('app_token') || null;
 let currentVMsFetchRef = null;
-let isRegisterMode = false;
 
 // UI Elements
+const themeToggleBtn = document.getElementById('theme-toggle');
 const authView = document.getElementById('auth-view');
 const authForm = document.getElementById('auth-form');
 const authSubmitBtn = document.getElementById('auth-submit');
-const authToggleBtn = document.getElementById('auth-toggle-btn');
-const authTitle = document.getElementById('auth-title');
-const authSubtitle = document.getElementById('auth-subtitle');
 const authError = document.getElementById('auth-error');
+const authSuccess = document.getElementById('auth-success');
 
 const dashboardView = document.getElementById('dashboard-view');
 const serversView = document.getElementById('servers-view');
 const nodeDetailsView = document.getElementById('node-details-view');
 
+const navLinks = document.getElementById('nav-links');
 const navBtnDashboard = document.getElementById('nav-btn-dashboard');
 const navBtnServers = document.getElementById('nav-btn-servers');
 const logoutBtn = document.getElementById('logout-btn');
+const navBrand = document.getElementById('nav-brand');
 
 const loadingOverlay = document.getElementById('loading-overlay');
 const dashboardGrid = document.getElementById('dashboard-grid');
@@ -35,6 +35,20 @@ const detailServerName = document.getElementById('detail-server-name');
 const detailNodeName = document.getElementById('detail-node-name');
 const detailVmCount = document.getElementById('detail-vm-count');
 const backToDashboardBtn = document.getElementById('back-to-dashboard');
+
+// Theme Management
+function initTheme() {
+    if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+    } else {
+        document.documentElement.classList.remove('dark');
+    }
+}
+themeToggleBtn.addEventListener('click', () => {
+    document.documentElement.classList.toggle('dark');
+    localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+});
+initTheme();
 
 // Helpers
 function showLoading(show) {
@@ -52,21 +66,19 @@ function switchView(viewId) {
 
 function updateNav() {
     if (sessionToken) {
-        navBtnDashboard.classList.remove('hidden');
-        navBtnServers.classList.remove('hidden');
+        navLinks.classList.remove('hidden');
         logoutBtn.classList.remove('hidden');
         switchView('dashboard-view');
         loadDashboard();
     } else {
-        navBtnDashboard.classList.add('hidden');
-        navBtnServers.classList.add('hidden');
+        navLinks.classList.add('hidden');
         logoutBtn.classList.add('hidden');
         switchView('auth-view');
     }
 }
 
 async function fetchWithAuth(url, options = {}) {
-    if (!sessionToken) throw new Error("AUTH_ERR // NO_TOKEN");
+    if (!sessionToken) throw new Error("No token available");
     const headers = {
         'Authorization': `Bearer ${sessionToken}`,
         ...options.headers
@@ -76,11 +88,11 @@ async function fetchWithAuth(url, options = {}) {
         sessionToken = null;
         localStorage.removeItem('app_token');
         updateNav();
-        throw new Error("AUTH_ERR // TOKEN_EXPIRED");
+        throw new Error("Session expired. Please sign in again.");
     }
     if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || "SYS_ERR // UNKNOWN");
+        throw new Error(error.detail || "API Request Failed");
     }
     return response.json();
 }
@@ -89,66 +101,56 @@ async function fetchWithAuth(url, options = {}) {
 navBtnDashboard.addEventListener('click', () => { switchView('dashboard-view'); loadDashboard(); });
 navBtnServers.addEventListener('click', () => { switchView('servers-view'); loadServers(); });
 backToDashboardBtn.addEventListener('click', () => { switchView('dashboard-view'); loadDashboard(); });
+navBrand.addEventListener('click', () => { if(sessionToken) { switchView('dashboard-view'); loadDashboard(); }});
 
 // Authentication
-authToggleBtn.addEventListener('click', () => {
-    isRegisterMode = !isRegisterMode;
-    if (isRegisterMode) {
-        authTitle.textContent = "REG_REQ";
-        authSubtitle.textContent = "Establish new local operator profile";
-        authSubmitBtn.textContent = "REGISTER";
-        authToggleBtn.textContent = "<< Return to local auth";
-    } else {
-        authTitle.textContent = "AUTH_REQ";
-        authSubtitle.textContent = "Establish secure local terminal session";
-        authSubmitBtn.textContent = "INITIALIZE";
-        authToggleBtn.textContent = ">> Switch to Network Registration";
-    }
-});
-
 authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     authError.classList.add('hidden');
+    if (authSuccess) authSuccess.classList.add('hidden');
     const username = document.getElementById('auth-username').value;
     const password = document.getElementById('auth-password').value;
     
-    authSubmitBtn.innerHTML = '<i class="ph ph-circle-notch animate-spin"></i> SYNCING...';
+    const ogHtml = authSubmitBtn.innerHTML;
+    authSubmitBtn.innerHTML = '<i class="ph ph-circle-notch animate-spin"></i> <span>Authenticating...</span>';
     authSubmitBtn.disabled = true;
     
     try {
-        const endpoint = isRegisterMode ? '/app/register' : '/app/login';
-        const response = await fetch(`${API_BASE}${endpoint}`, {
+        const response = await fetch(`${API_BASE}/app/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
         
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || 'Auth failed');
-        
-        if (isRegisterMode) {
-            // Auto login after register
-            const loginResp = await fetch(`${API_BASE}/app/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            const loginData = await loginResp.json();
-            if (!loginResp.ok) throw new Error(loginData.detail);
-            sessionToken = loginData.token;
-        } else {
-            sessionToken = data.token;
+        let data;
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            throw new Error(`Server Error (${response.status}): The server encountered a crash or unhandled error.`);
         }
         
+        if (!response.ok) throw new Error(data.detail || 'Authentication failed');
+        
+        sessionToken = data.token;
         localStorage.setItem('app_token', sessionToken);
-        updateNav();
+        
+        if (authSuccess) {
+            authSuccess.textContent = "Authentication successful! Redirecting...";
+            authSuccess.classList.remove('hidden');
+        }
+        
+        // Brief delay so user can read the success message
+        setTimeout(() => {
+            updateNav();
+        }, 800);
+        
     } catch (err) {
         authError.textContent = err.message;
         authError.classList.remove('hidden');
         authForm.classList.add('animate-pulse');
         setTimeout(() => authForm.classList.remove('animate-pulse'), 500);
     } finally {
-        authSubmitBtn.textContent = isRegisterMode ? "REGISTER" : "INITIALIZE";
+        authSubmitBtn.innerHTML = ogHtml;
         authSubmitBtn.disabled = false;
     }
 });
@@ -183,7 +185,8 @@ addServerForm.addEventListener('submit', async (e) => {
         verify_ssl: document.getElementById('srv-verify-ssl').checked
     };
     
-    btn.innerHTML = '<i class="ph ph-circle-notch animate-spin"></i> PROBING...';
+    const ogHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="ph ph-circle-notch animate-spin"></i> Connecting...';
     btn.disabled = true;
     
     try {
@@ -199,64 +202,72 @@ addServerForm.addEventListener('submit', async (e) => {
         errBox.textContent = err.message;
         errBox.classList.remove('hidden');
     } finally {
-        btn.textContent = "ESTABLISH LINK";
+        btn.innerHTML = ogHtml;
         btn.disabled = false;
     }
 });
 
 async function deleteServer(id) {
-    if(!confirm('TERMINATE THIS LINK?')) return;
+    if(!confirm('Are you sure you want to remove this server link?')) return;
     try {
         await fetchWithAuth(`/servers/${id}`, { method: 'DELETE' });
         loadServers();
     } catch (err) {
-        alert("FAIL // " + err.message);
+        alert("Deletion failed: " + err.message);
     }
 }
 
 // Data Loaders
 async function loadServers() {
     const list = document.getElementById('server-list');
-    list.innerHTML = '<div class="text-cyan font-mono animate-pulse">FETCHING_LINKS...</div>';
+    list.innerHTML = '<div class="text-center py-6 text-slate-500"><i class="ph ph-circle-notch animate-spin text-2xl mb-2"></i><br>Loading nodes...</div>';
     try {
         const servers = await fetchWithAuth('/servers');
         if (servers.length === 0) {
-            list.innerHTML = '<div class="cyber-card text-center text-cyan-dim font-mono py-8">NO UPLINKS ESTABLISHED.</div>';
+            list.innerHTML = '<div class="glass-card p-6 rounded-2xl border glass-border text-center text-slate-500 shadow-sm">No Proxmox servers have been configured yet.</div>';
             return;
         }
         list.innerHTML = '';
         servers.forEach(s => {
             const el = document.createElement('div');
-            el.className = "cyber-card flex justify-between items-center";
+            el.className = "glass-card p-5 rounded-2xl border glass-border flex justify-between items-center shadow-sm hover:shadow-md transition";
             el.innerHTML = `
-                <div>
-                    <div class="font-bold text-lg text-cyan font-mono">${s.name}</div>
-                    <div class="text-xs text-cyan-dim font-mono">${s.host} // ${s.pve_username}</div>
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                        <i class="ph-fill ph-hard-drives text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-lg leading-tight mb-0.5">${s.name}</div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400 font-medium">${s.host} <span class="mx-1">•</span> ${s.pve_username}</div>
+                    </div>
                 </div>
-                <button onclick="deleteServer(${s.id})" class="cyber-btn danger text-xs py-1 px-3">TERMINATE</button>
+                <button onclick="deleteServer(${s.id})" class="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition" title="Remove Server">
+                    <i class="ph-bold ph-trash text-lg"></i>
+                </button>
             `;
             list.appendChild(el);
         });
     } catch (err) {
-        list.innerHTML = `<div class="text-magenta font-mono">${err.message}</div>`;
+        list.innerHTML = `<div class="bg-red-500/10 text-red-500 p-4 rounded-xl text-sm border border-red-500/20">${err.message}</div>`;
     }
 }
 
 async function loadDashboard() {
-    dashboardGrid.innerHTML = '<div class="col-span-full text-center py-10"><i class="ph ph-circle-notch animate-spin text-3xl text-cyan mb-2"></i><br><span class="text-cyan font-mono animate-pulse">GATHERING_FLEET_TELEMETRY...</span></div>';
+    dashboardGrid.innerHTML = '<div class="col-span-full text-center py-12"><i class="ph ph-circle-notch animate-spin text-4xl text-blue-500 mb-3"></i><br><span class="text-slate-500 font-medium">Fetching fleet telemetry...</span></div>';
     
     try {
         const dashData = await fetchWithAuth('/dashboard');
         dashboardGrid.innerHTML = '';
         
         if (dashData.length === 0) {
-            dashboardGrid.innerHTML = '<div class="cyber-card col-span-full text-center py-12"><div class="text-xl text-cyan-dim font-mono mb-4">NO ACTIVE UPLINKS</div><button onclick="switchView(\\'servers-view\\'); loadServers(); addServerFormContainer.classList.remove(\\'hidden\\')" class="cyber-btn py-2 px-6">CONFIGURE NEW UPLINK</button></div>';
+            dashboardGrid.innerHTML = '<div class="glass-card col-span-full text-center py-16 rounded-3xl border glass-border shadow-sm"><div class="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400"><i class="ph-fill ph-hard-drives text-3xl"></i></div><h3 class="text-xl font-semibold mb-2">No Active Links</h3><p class="text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">Connect your first Proxmox environment to start monitoring your infrastructure.</p><button onclick="switchView(\'servers-view\'); loadServers(); addServerFormContainer.classList.remove(\'hidden\')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium shadow-lg shadow-blue-500/20 transition">Add First Server</button></div>';
             return;
         }
         
-        dashData.forEach(srv => {
+        dashData.forEach((srv, i) => {
             const card = document.createElement('div');
-            card.className = "cyber-card flex flex-col h-full";
+            card.className = "glass-card p-5 lg:p-6 rounded-3xl border glass-border shadow-xl hover:shadow-2xl transition-all duration-300 flex flex-col h-full animate-fade-in";
+            card.style.animationDelay = `${i * 100}ms`;
             
             let nodesHtml = '';
             if (srv.status === 'online' && srv.nodes.length > 0) {
@@ -265,58 +276,74 @@ async function loadDashboard() {
                     const cpuPercent = Math.round((n.cpu || 0) * 100);
                     const memPercent = n.maxmem ? Math.round((n.mem / n.maxmem) * 100) : 0;
                     
-                    const cpuColor = cpuPercent > 85 ? 'bar-red' : (cpuPercent > 60 ? 'bar-cyan' : 'bar-green');
-                    const memColor = memPercent > 85 ? 'bar-red' : (memPercent > 60 ? 'bar-cyan' : 'bar-green');
+                    const cpuColor = cpuPercent > 85 ? 'bg-red-500' : (cpuPercent > 60 ? 'bg-amber-500' : 'bg-blue-500');
+                    const memColor = memPercent > 85 ? 'bg-red-500' : (memPercent > 60 ? 'bg-amber-500' : 'bg-purple-500');
                     
                     nodesHtml += `
-                        <div class="mt-4 p-3 bg-black/40 border border-cyan-dim rounded cursor-pointer hover:border-cyan hover:bg-cyan/5 transition-colors group" onclick="loadNodeVMs(${srv.id}, '${srv.name}', '${n.node}')">
-                            <div class="flex justify-between items-center mb-2">
-                                <div class="font-mono text-sm text-white group-hover:text-cyan group-hover:glitch" data-text="${n.node}"><span class="status-dot ${isOnline ? 'online' : 'offline'} mr-2"></span>${n.node}</div>
-                                <div class="text-xs text-cyan-dim font-mono">>_VIEW_VMS</div>
+                        <div class="mt-4 p-4 bg-white/40 dark:bg-slate-800/40 rounded-2xl cursor-pointer hover:bg-white/60 dark:hover:bg-slate-700/60 transition shadow-sm group border border-transparent hover:border-slate-300 dark:hover:border-slate-600" onclick="loadNodeVMs(${srv.id}, '${srv.name}', '${n.node}')">
+                            <div class="flex justify-between items-center mb-4">
+                                <div class="font-semibold text-[15px] flex items-center gap-2">
+                                    <span class="w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500'}"></span>
+                                    ${n.node}
+                                </div>
+                                <div class="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded-md flex items-center gap-1 group-hover:text-blue-500 group-hover:bg-blue-500/10 transition-colors"><span>VIEW</span> <i class="ph-bold ph-caret-right"></i></div>
                             </div>
                             ${isOnline ? `
-                            <div class="flex items-center gap-2 mb-1.5">
-                                <div class="text-[10px] text-cyan-dim font-mono w-8">CPU</div>
-                                <div class="cyber-bar-container flex-1"><div class="cyber-bar ${cpuColor}" style="width: ${cpuPercent}%"></div></div>
-                                <div class="text-[10px] text-cyan font-mono w-8 text-right">${cpuPercent}%</div>
+                            <div class="space-y-3">
+                                <div>
+                                    <div class="flex justify-between text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1.5 uppercase">
+                                        <span>CPU Load</span>
+                                        <span class="${cpuPercent > 85 ? 'text-red-500 font-bold' : ''}">${cpuPercent}%</span>
+                                    </div>
+                                    <div class="w-full bg-slate-200 dark:bg-slate-700/50 rounded-full h-1.5 overflow-hidden">
+                                        <div class="${cpuColor} h-1.5 rounded-full transition-all duration-1000" style="width: ${cpuPercent}%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1.5 uppercase">
+                                        <span>Memory Allocation</span>
+                                        <span class="${memPercent > 85 ? 'text-red-500 font-bold' : ''}">${memPercent}%</span>
+                                    </div>
+                                    <div class="w-full bg-slate-200 dark:bg-slate-700/50 rounded-full h-1.5 overflow-hidden">
+                                        <div class="${memColor} h-1.5 rounded-full transition-all duration-1000" style="width: ${memPercent}%"></div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="flex items-center gap-2">
-                                <div class="text-[10px] text-cyan-dim font-mono w-8">RAM</div>
-                                <div class="cyber-bar-container flex-1"><div class="cyber-bar ${memColor}" style="width: ${memPercent}%"></div></div>
-                                <div class="text-[10px] text-cyan font-mono w-8 text-right">${memPercent}%</div>
-                            </div>
-                            ` : '<div class="text-xs text-magenta font-mono">NODE_OFFLINE</div>'}
+                            ` : '<div class="text-xs text-red-500 font-medium py-3 text-center bg-red-500/10 rounded-xl my-2 border border-red-500/20">Node is Offline / Unreachable</div>'}
                         </div>
                     `;
                 });
             } else if (srv.status === 'offline') {
-                nodesHtml = '<div class="mt-4 text-magenta font-mono text-sm uppercase text-center py-4 border border-magenta/30 bg-magenta/10">LINK_UNREACHABLE</div>';
+                nodesHtml = '<div class="mt-4 text-red-500 text-sm text-center py-6 border border-red-500/20 bg-red-500/10 rounded-2xl font-medium">Link Unreachable.<br><span class="text-xs opacity-80 font-normal">Check host availability and credentials.</span></div>';
             } else {
-                nodesHtml = '<div class="mt-4 text-cyan-dim font-mono text-sm text-center py-4 border border-cyan-dim/30">NO_COMPUTE_NODES_FOUND</div>';
+                nodesHtml = '<div class="mt-4 text-slate-500 text-sm text-center py-6 border border-slate-300 dark:border-slate-700 rounded-2xl">No compute nodes found in cluster.</div>';
             }
             
             card.innerHTML = `
-                <div class="flex justify-between items-start mb-2 border-b border-cyan-dim pb-3">
+                <div class="flex justify-between items-start mb-4">
                     <div>
-                        <div class="font-bold text-xl text-cyan font-mono tracking-wider">${srv.name}</div>
-                        <div class="text-xs text-cyan-dim font-mono uppercase mt-1">STATUS: <span class="${srv.status === 'online' ? 'text-green-500' : 'text-magenta'}">${srv.status}</span></div>
+                        <div class="font-bold text-xl tracking-tight mb-1 text-slate-800 dark:text-white">${srv.name}</div>
+                        <div class="text-xs font-semibold ${srv.status === 'online' ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10'} px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 border ${srv.status === 'online' ? 'border-green-500/20' : 'border-red-500/20'}">
+                            <span class="w-1.5 h-1.5 rounded-full ${srv.status === 'online' ? 'bg-green-500' : 'bg-red-500'}"></span>
+                            ${srv.status.toUpperCase()}
+                        </div>
                     </div>
                 </div>
                 
                 ${srv.status === 'online' ? `
-                <div class="grid grid-cols-2 gap-2 mt-2">
-                    <div class="bg-black/40 p-2 border border-cyan-dim">
-                        <div class="text-[10px] text-cyan-dim font-mono mb-1">RUNNING_VMS</div>
-                        <div class="text-2xl font-bold font-mono text-white">${srv.vms_running}</div>
+                <div class="grid grid-cols-2 gap-3 mt-1 mb-2">
+                    <div class="bg-white/50 dark:bg-slate-800/60 p-3 rounded-2xl border border-white/40 dark:border-slate-700/50">
+                        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5 uppercase tracking-wider flex items-center gap-1"><i class="ph-fill ph-play-circle text-green-500"></i> Running VMs</div>
+                        <div class="text-2xl font-bold">${srv.vms_running}</div>
                     </div>
-                    <div class="bg-black/40 p-2 border border-cyan-dim">
-                        <div class="text-[10px] text-cyan-dim font-mono mb-1">TOTAL_VMS</div>
-                        <div class="text-2xl font-bold font-mono text-white">${srv.vms_total}</div>
+                    <div class="bg-white/50 dark:bg-slate-800/60 p-3 rounded-2xl border border-white/40 dark:border-slate-700/50">
+                        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5 uppercase tracking-wider flex items-center gap-1"><i class="ph-fill ph-stack text-blue-500"></i> Total VMs</div>
+                        <div class="text-2xl font-bold">${srv.vms_total}</div>
                     </div>
                 </div>
                 ` : ''}
                 
-                <div class="flex-1 mt-2">
+                <div class="flex-1 mt-1">
                     ${nodesHtml}
                 </div>
             `;
@@ -324,7 +351,7 @@ async function loadDashboard() {
         });
         
     } catch (err) {
-        dashboardGrid.innerHTML = `<div class="col-span-full text-center text-magenta font-mono bg-magenta/10 border border-magenta p-4 mt-4 w-full">${err.message}</div>`;
+        dashboardGrid.innerHTML = `<div class="col-span-full border border-red-500/20 text-red-500 bg-red-500/10 rounded-2xl p-6 text-center font-medium shadow-sm w-full">${err.message}</div>`;
     }
 }
 
@@ -364,7 +391,7 @@ async function loadNodeVMs(serverId, serverName, nodeName) {
         detailVmCount.textContent = vms.length;
         
         if (vms.length === 0) {
-            vmsContainer.innerHTML = '<div class="col-span-full text-center py-12 border border-cyan-dim cyber-card"><div class="text-cyan-dim font-mono">NO COMPUTE RESOURCES ALLOCATED ON THIS NODE</div></div>';
+            vmsContainer.innerHTML = '<div class="col-span-full text-center py-16 glass-card border glass-border rounded-3xl shadow-sm"><div class="text-slate-400 font-medium mb-2"><i class="ph-fill ph-ghost text-4xl mb-2"></i><br>No Compute Resources</div><p class="text-sm text-slate-500">There are no virtual machines allocated on this node.</p></div>';
             return;
         }
         
@@ -374,59 +401,52 @@ async function loadNodeVMs(serverId, serverName, nodeName) {
             const cpuPercent = Math.round((vm.cpu || 0) * 100);
             
             const card = document.createElement('div');
-            card.className = `cyber-card p-3 border ${isRunning ? 'border-cyan-dim' : 'border-[#333] opacity-60'} hover:border-cyan transition-colors`;
-            card.style.animation = `fade-in 0.3s ease-out ${i * 0.05}s forwards`;
-            card.style.opacity = '0';
+            card.className = `glass-card p-4 rounded-2xl border hover:shadow-lg transition relative animate-fade-in ${isRunning ? 'glass-border hover:border-blue-500/30' : 'border-slate-200 dark:border-slate-800 opacity-75'}`;
+            card.style.animationDelay = `${i * 40}ms`;
             
-            // Re-using the logic from the old dash, injecting into new cyber-UI
             card.innerHTML = `
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-3">
-                        <div class="text-2xl ${isRunning ? (vm.type === 'qemu' ? 'text-cyan' : 'text-green-400') : 'text-[#555]'}">
-                            <i class="${vm.type === 'qemu' ? 'ph ph-desktop' : 'ph ph-package'}"></i>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3 w-full">
+                        <div class="relative shrink-0 w-11 h-11 rounded-xl flex items-center justify-center ${isRunning ? (vm.type === 'qemu' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-orange-500/10 text-orange-500') : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}">
+                            <i class="ph-fill ${vm.type === 'qemu' ? 'ph-desktop' : 'ph-package'} text-2xl"></i>
+                            <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-white dark:border-slate-800 rounded-full ${isRunning ? 'bg-green-500' : 'bg-red-500'}"></span>
                         </div>
-                        <div>
-                            <h4 class="font-bold text-white font-mono text-sm truncate max-w-[150px]">${vm.name || 'VM_'+vm.vmid}</h4>
-                            <div class="text-[10px] text-cyan-dim font-mono">ID: ${vm.vmid} // ${vm.type.toUpperCase()}</div>
+                        
+                        <div class="flex-1 min-w-0 pr-2">
+                            <div class="flex items-center gap-2 mb-0.5">
+                                <h4 class="font-semibold text-[15px] truncate text-slate-800 dark:text-slate-100">${vm.name || 'VM_'+vm.vmid}</h4>
+                                <span class="shrink-0 text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-white/50 dark:bg-slate-800/50 text-slate-500 shadow-sm border border-slate-200 dark:border-slate-700">ID: ${vm.vmid}</span>
+                            </div>
+                            
+                            <div class="flex items-center gap-3 mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                ${isRunning ? `
+                                    <div class="flex items-center gap-1 bg-white/30 dark:bg-slate-800/30 px-2 py-0.5 rounded flex-1 justify-center"><i class="ph-fill ph-cpu text-blue-500"></i> ${cpuPercent}%</div>
+                                    <div class="flex items-center gap-1 bg-white/30 dark:bg-slate-800/30 px-2 py-0.5 rounded flex-1 justify-center"><i class="ph-fill ph-memory text-purple-500"></i> ${formatMemory(vm.maxmem)}</div>
+                                    <div class="flex items-center gap-1 ml-auto bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-0.5 rounded whitespace-nowrap"><i class="ph-fill ph-clock"></i> ${formatUptime(vm.uptime)}</div>
+                                ` : `
+                                    <span class="text-red-500 bg-red-500/10 px-2 py-0.5 rounded-md font-semibold">Halted</span>
+                                `}
+                            </div>
                         </div>
                     </div>
-                    <div class="status-dot ${isRunning ? 'online' : 'offline'}"></div>
                 </div>
                 
                 ${isRunning ? `
-                <div class="grid grid-cols-2 gap-2 text-[10px] font-mono mb-2">
-                    <div class="bg-black/50 p-1 border border-cyan-dim/50"><span class="text-cyan-dim">CPU:</span> ${cpuPercent}%</div>
-                    <div class="bg-black/50 p-1 border border-cyan-dim/50"><span class="text-cyan-dim">RAM:</span> ${formatMemory(vm.maxmem)}</div>
-                    <div class="bg-black/50 p-1 border border-cyan-dim/50 col-span-2"><span class="text-cyan-dim">UPTIME:</span> ${formatUptime(vm.uptime)}</div>
+                <div class="w-full h-1 bg-slate-200 dark:bg-slate-700/50 absolute bottom-0 left-0 rounded-b-2xl overflow-hidden">
+                    <div class="h-1 bg-gradient-to-r from-blue-500 to-purple-500" style="width: ${(cpuPercent + memPercent)/2}%"></div>
                 </div>
-                <div class="cyber-bar-container h-1">
-                    <div class="cyber-bar bar-cyan" style="width: ${(cpuPercent + memPercent)/2}%"></div>
-                </div>
-                ` : '<div class="text-xs text-magenta font-mono py-1 border border-magenta/30 bg-magenta/10 text-center mt-2">HALTED</div>'}
+                ` : ''}
             `;
             
             vmsContainer.appendChild(card);
         });
         
     } catch (err) {
-        vmsContainer.innerHTML = `<div class="col-span-full border border-magenta text-magenta bg-magenta/10 p-4 font-mono">${err.message}</div>`;
+        vmsContainer.innerHTML = `<div class="col-span-full border border-red-500/20 text-red-500 bg-red-500/10 rounded-2xl p-6 text-center font-medium shadow-sm w-full">${err.message}</div>`;
     } finally {
         showLoading(false);
     }
 }
-
-// Initial Boot CSS injection for animations missing in tailwind/static
-const style = document.createElement('style');
-style.innerHTML = `
-@keyframes fade-in {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in {
-    animation: fade-in 0.4s ease-out forwards;
-}
-`;
-document.head.appendChild(style);
 
 // Run init
 updateNav();

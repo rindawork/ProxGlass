@@ -1,5 +1,4 @@
 import uuid
-import urllib3
 import urllib.parse
 import os
 import time
@@ -8,17 +7,16 @@ from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.staticfiles import StaticFiles
 from proxmoxer import ProxmoxAPI
 from pydantic import BaseModel
-from passlib.context import CryptContext
-from typing import List, Optional
-
-# Disable insecure request warnings
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import bcrypt
+from typing import List
 
 app = FastAPI()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 DB_FILE = "app.db"
+
+DEFAULT_ADMIN_USER = "admin"
+DEFAULT_ADMIN_PASS = "admin"
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -38,6 +36,13 @@ def init_db():
                     verify_ssl BOOLEAN NOT NULL DEFAULT 0,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                  )''')
+                 
+    # Provision Master Admin
+    c.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_ADMIN_USER,))
+    if not c.fetchone():
+        hashed = bcrypt.hashpw(DEFAULT_ADMIN_PASS.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        c.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (DEFAULT_ADMIN_USER, hashed))
+
     conn.commit()
     conn.close()
 
@@ -115,25 +120,13 @@ def get_proxmox_api(server, verify_ssl=None):
 
     return ProxmoxAPI(**auth_kwargs)
 
-@app.post("/api/app/register")
-def register_user(req: UserAuth, db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("SELECT id FROM users WHERE username = ?", (req.username,))
-    if cursor.fetchone():
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    hashed_password = pwd_context.hash(req.password)
-    cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (req.username, hashed_password))
-    db.commit()
-    return {"message": "User registered successfully"}
-
 @app.post("/api/app/login")
 def login_user(req: UserAuth, db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", (req.username,))
     user = cursor.fetchone()
     
-    if not user or not pwd_context.verify(req.password, user["password_hash"]):
+    if not user or not bcrypt.checkpw(req.password.encode('utf-8'), user["password_hash"].encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid username or password")
         
     token = str(uuid.uuid4())

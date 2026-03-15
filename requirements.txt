@@ -5,5 +5,4 @@ requests
 pydantic
 pytest
 httpx
-passlib[bcrypt]
 bcrypt
